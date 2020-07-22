@@ -13869,3 +13869,97 @@ TEST_F(VkSyncValTest, SyncLayoutTransition) {
                            &full_subresource_range);
     m_errorMonitor->VerifyFound();
 }
+
+TEST_F(VkSyncValTest, SyncPluralSubpasses) {
+    ASSERT_NO_FATAL_FAILURE(InitSyncValFramework());
+    ASSERT_NO_FATAL_FAILURE(InitState());
+    ASSERT_NO_FATAL_FAILURE(InitRenderTarget());
+
+    m_errorMonitor->ExpectSuccess();
+    std::vector<VkAttachmentDescription> attachments;
+    std::vector<VkSubpassDescription> subpasses;
+    std::vector<VkSubpassDependency> deps;
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R32G32_UINT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD,
+                                                  VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                                                  VK_ATTACHMENT_STORE_OP_STORE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R32G32_SFLOAT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD,
+                                                 VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_LOAD,
+                                                 VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                 VK_IMAGE_LAYOUT_GENERAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_A8B8G8R8_UNORM_PACK32, VK_SAMPLE_COUNT_1_BIT,
+                                                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE,
+                                                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                                                 VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R8_SINT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                                                 VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                                                 VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R32G32B32A32_UINT, VK_SAMPLE_COUNT_1_BIT,
+                                                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                                                 VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                                                 VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R8G8B8A8_UINT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                                                 VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                                                 VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                                                 VK_IMAGE_LAYOUT_GENERAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_R32_SINT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                 VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_ATTACHMENT_LOAD_OP_LOAD,
+                                                 VK_ATTACHMENT_STORE_OP_STORE, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+
+   attachments.push_back(VkAttachmentDescription{0, VK_FORMAT_B8G8R8A8_UNORM, VK_SAMPLE_COUNT_1_BIT,
+                                                 VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
+                                                 VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE,
+                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL});
+
+    for (uint32_t subpassNdx = 0; subpassNdx < subpasses.size() - 1; subpassNdx++) {
+        deps.push_back(
+            VkSubpassDependency{subpassNdx, subpassNdx + 1,
+                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT, 0u});
+    }
+
+    const VkRenderPassCreateInfo renderPassInfo = {
+        VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        nullptr,
+        0u,
+        static_cast<uint32_t>(attachments.size()),
+        attachments.data(),
+        static_cast<uint32_t>(subpasses.size()),
+        subpasses.data(),
+        static_cast<uint32_t>(deps.size()),
+        deps.data(),
+    };
+    VkRenderPass rp;
+    ASSERT_VK_SUCCESS(vk::CreateRenderPass(device(), &renderPassInfo, nullptr, &rp));
+
+    const VkFramebufferCreateInfo fbci = {
+        VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, 0, 0u, rp, 2u, , 64, 64, 1u,
+    };
+    VkFramebuffer fb;
+    ASSERT_VK_SUCCESS(vk::CreateFramebuffer(device(), &fbci, nullptr, &fb));
+
+    m_commandBuffer->begin();
+    for (uint32_t subpassNdx = 0; subpassNdx < subpasses.size() - 1; subpassNdx++) {
+        if (subpassNdx == 0) {
+            m_renderPassBeginInfo.renderArea = {{0, 0}, {64, 64}};
+            m_renderPassBeginInfo.renderPass = rp;
+            m_renderPassBeginInfo.framebuffer = fb;
+            m_commandBuffer->BeginRenderPass(m_renderPassBeginInfo);
+        } else
+            vk::CmdNextSubpass(m_commandBuffer->handle(), VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+    m_errorMonitor->VerifyNotFound();
+}
